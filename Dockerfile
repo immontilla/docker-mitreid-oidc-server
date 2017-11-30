@@ -1,9 +1,21 @@
-FROM tomcat:9.0.1-alpine
-MAINTAINER Iván Mauricio Montilla Figueroa
-RUN apk add --no-cache git maven openjdk8
-RUN git clone --progress --verbose https://github.com/mitreid-connect/OpenID-Connect-Java-Spring-Server.git
-RUN cd OpenID-Connect-Java-Spring-Server && mvn -Dmaven.javadoc.skip=true -DskipTests clean install && cp openid-connect-server-webapp/target/openid-connect-server-webapp.war /usr/local/tomcat/webapps/ && cd .. && rm -rf OpenID-Connect-Java-Spring-Server
-RUN git clone --progress --verbose https://github.com/mitreid-connect/simple-web-app.git
-RUN cd simple-web-app && mvn clean install && cp target/simple-web-app.war /usr/local/tomcat/webapps/ && cd .. && rm -rf simple-web-app
-RUN rm -rf /root/.m2/
+FROM alpine/git as clone
+LABEL maintainer="Iván Mauricio Montilla Figueroa"
+WORKDIR /app
+RUN mkdir srv && cd srv && \ 
+git clone --progress https://github.com/mitreid-connect/OpenID-Connect-Java-Spring-Server.git && \ 
+cd .. && mkdir web && cd web && \ 
+git clone --progress https://github.com/mitreid-connect/simple-web-app.git
 
+FROM maven:3.5.2-jdk-8-alpine as build
+WORKDIR /app
+COPY --from=clone /app/srv/OpenID-Connect-Java-Spring-Server /app/srv
+RUN cd srv && mvn -Dmaven.javadoc.skip=true -DskipTests clean install && \
+mkdir ../WARs && mv openid-connect-server-webapp/target/openid-connect-server-webapp.war ../WARs
+COPY --from=clone /app/web/simple-web-app /app/web
+RUN cd web && mvn -DskipTests clean install && \
+mv target/simple-web-app.war ../WARs
+
+FROM tomcat:9.0.1-alpine
+WORKDIR /app
+COPY --from=build /app/WARs /app
+RUN cp *.war /usr/local/tomcat/webapps/
